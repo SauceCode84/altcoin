@@ -24,6 +24,7 @@ type LiveStatsResponse = {
 export const fetchLiveStats = async () => {
   try {
     let response = await fetch(apiUrl);
+    console.log(response);
     return response.json<LiveStatsResponse>();
   }
   catch (err) {
