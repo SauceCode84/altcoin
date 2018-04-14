@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <!-- Required meta tags -->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.0/css/bootstrap.min.css" integrity="sha384-9gVQ4dYFwwWSjIDZnLEWnxCjeSWFphJiwGPXr1jddIhOegiu1FwO5qRGvFXOdJZ4" crossorigin="anonymous">
+
+    <title>AltCoinTrader - Live Stats</title>
+
+    <style>
+      h2 {
+        transition: color 0.25s ease-in-out;
+      }
+    </style>
+  </head>
+  <body ng-app="app">
+    <div class="container" ng-controller="LiveStatsController">
+      <div id="coinsWrapper"></div>
+
+      <!-- <div class="row">
+        <div class="col-md">
+          <div id="BTC" class="card">
+            <h4 class="card-header">BitCoin - BTC</h4>
+            <div class="card-body">
+              <h1 class="text-center" id="BTC-price">0.00</h1>
+              <div>
+                <span class="badge badge-light">Low/High</span>
+                <span class="text-muted">
+                  <span id="BTC-low">0.00</span> - <span id="BTC-high">0.00</span>
+                </span>
+              </div>
+              <div>
+                <span class="badge badge-light">Volume</span>
+                <span class="text-muted" id="BTC-volume">0.00</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-md">
+          <div id="ETH" class="card">
+            <h4 class="card-header">Ethereum - ETH</h4>
+            <div class="card-body">
+              <h1 class="text-center" id="ETH-price">0.00</h1>
+              <div>
+                <span class="badge badge-light">Low/High</span>
+                <span class="text-muted">
+                  <span id="ETH-low">0.00</span> - <span id="ETH-high">0.00</span>
+                </span>
+              </div>
+              <div>
+                <span class="badge badge-light">Volume</span>
+                <span class="text-muted" id="ETH-volume">0.00</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-md">
+          <div id="XRP" class="card">
+            <h4 class="card-header">Ripple - XRP</h4>
+            <div class="card-body">
+              <h1 class="text-center" id="XRP-price">0.00</h1>
+              <div>
+                <span class="badge badge-light">Low/High</span>
+                <span class="text-muted">
+                  <span id="XRP-low">0.00</span> - <span id="XRP-high">0.00</span>
+                </span>
+              </div>
+              <div>
+                <span class="badge badge-light">Volume</span>
+                <span class="text-muted" id="XRP-volume">0.00</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>-->
+    </div>
+
+    
+
+    <!-- Optional JavaScript -->
+    <!-- jQuery first, then Popper.js, then Bootstrap JS -->
+    <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js" integrity="sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.0/umd/popper.min.js" integrity="sha384-cs/chFZiN24E4KMATLdqdvsezGxaGsi4hLGOzlXwp5UZB1LY//20VyM2taTB4QvJ" crossorigin="anonymous"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.1.0/js/bootstrap.min.js" integrity="sha384-uefMccjFJAIv6A+rW+L4AHf99KvxDjWSu1z9VI8SKNVmz4sk7buKt/6v9KI65qnm" crossorigin="anonymous"></script>
+    
+    <script src="/socket.io/socket.io.js"></script>
+
+    <script>
+        let socket = io.connect("/");
+   
+        const roundAmount = (value, decimalPlaces = 2) => parseFloat(Math.round(value * Math.pow(10, decimalPlaces)) / Math.pow(10, decimalPlaces)).toFixed(decimalPlaces);
+
+        socket.on("coinUpdate", data => {
+          console.log(data);
+          let { Coin, Price, Low, High, Volume } = data;
+          let priceEl = $(`#${ Coin }-price`);
+          let lowEl = $(`#${ Coin }-low`);
+          let highEl = $(`#${ Coin }-high`);
+          let volEl = $(`#${ Coin }-volume`);
+
+          Price = roundAmount(Price);
+          let prevPrice = parseFloat(priceEl.text());
+
+          priceEl.text(Price);
+
+          if (Price !== prevPrice) {
+            let priceChangeClass;
+
+            if (Price > prevPrice) {
+              priceChangeClass = "text-success";
+            } else if (Price < prevPrice) {
+              priceChangeClass = "text-danger";
+            }
+
+            priceEl.addClass(priceChangeClass);
+
+            setTimeout(() => {
+              priceEl.removeClass(priceChangeClass);
+            }, 500);
+          }
+
+          lowEl.text(roundAmount(Low));
+          highEl.text(roundAmount(High));
+          volEl.text(roundAmount(Volume, 3));
+        });
+
+        const makeGrid = (data, n) => {
+          let grid = [], i = 0, x = data.length, col, row = -1;
+          
+          for (let i = 0; i < x; i++) {
+            col = i % n;
+            
+            if (col === 0) {
+                grid[++row] = [];
+            }
+
+            grid[row][col] = data[i];
+          }
+          
+          return grid;
+        };
+
+        const coins = ["BTC", "ETH", "XRP", "BCH", "BTG", "DASH", "LTC", "NMC", "ZEC"];
+        const coinNames = {
+          "BTC": "Bitcoin",
+          "ETH": "Ethereum",
+          "XRP": "Ripple",
+          "BCH": "Bitcoin Cash",
+          "BTG": "Bitcoin Gold",
+          "DASH": "DigitalCash",
+          "LTC": "Litecoin",
+          "NMC": "NameCoin",
+          "ZEC": "ZCash"
+        };
+        
+        let coinsWrapper = $("#coinsWrapper");
+
+        makeGrid(coins, 3)
+          .forEach(coinsRow => {
+            let row = $("<div>", { class: "row mb-4" });
+            
+            coinsRow
+              .forEach(coin => {
+                let col = $("<div>", { class: "col-md" });
+
+                col.html(`
+                <div id="${ coin }" class="card">
+                  <h4 class="card-header">${ coinNames[coin] } - ${ coin }</h4>
+                  <div class="card-body">
+                    <h1 class="text-center" id="${ coin }-price">0.00</h1>
+                    <div>
+                      <span class="badge badge-light">Low/High</span>
+                      <span class="text-muted">
+                        <span id="${ coin }-low">0.00</span> - <span id="${ coin }-high">0.00</span>
+                      </span>
+                    </div>
+                    <div>
+                      <span class="badge badge-light">Volume</span>
+                      <span class="text-muted" id="${ coin }-volume">0.00</span>
+                    </div>
+                  </div>
+                </div>
+                `);
+
+                col.appendTo(row);
+              });
+            
+            row.appendTo(coinsWrapper);
+          });
+      </script>
+  </body>
+</html>
