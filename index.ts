@@ -46,10 +46,14 @@ const startUp = async () => {
   console.log("Starting up...");
   
   const fetchAndSaveLiveStats = async () => {
-    let liveStats = await fetchLiveStats();
-    await saveLiveStats(liveStats);
+    try {
+      let liveStats = await fetchLiveStats();
+      await saveLiveStats(liveStats);
     
-    currentLiveStats = mapLiveStats(liveStats);
+      currentLiveStats = mapLiveStats(liveStats);
+    } catch (err) {
+      console.error(err);
+    }
   }
 
   await fetchAndSaveLiveStats();

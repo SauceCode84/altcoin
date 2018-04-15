@@ -1,5 +1,6 @@
-import fetch from "node-fetch";
+//import fetch from "node-fetch";
 import * as r from "rethinkdb";
+import * as cloudscraper from "cloudscraper";
 
 const apiUrl = "https://www.altcointrader.co.za/api/v3/live-stats";
 const connectionConfig = {
@@ -22,8 +23,8 @@ type LiveStatsResponse = {
 };
 
 export const fetchLiveStats = async () => {
-  try {
-    let response = await fetch(apiUrl, {
+  //try {
+    /*let response = await fetch(apiUrl, {
       headers: {
         "Accept": "application/json",
         "Content-Type": "application/json"
@@ -33,11 +34,22 @@ export const fetchLiveStats = async () => {
     console.log(response);
     console.log(response.headers);
 
-    return response.json<LiveStatsResponse>();
-  }
+    return response.json<LiveStatsResponse>();*/
+
+    return new Promise<LiveStatsResponse>((resolve, reject) => {
+      cloudscraper.get(apiUrl, (error, response, body) => {
+        if (error) {
+          console.error(error);
+          return reject(error);
+        }
+  
+        return resolve(JSON.parse(body));
+      });
+    });
+  /*}
   catch (err) {
     console.error(err);
-  }
+  }*/
 }
 
 const getConnection = () => r.connect(connectionConfig);
