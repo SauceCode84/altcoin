@@ -1,16 +1,28 @@
 import * as express from "express";
 import * as http from "http";
+import * as bodyParser from "body-parser";
+
 import * as socketio from "socket.io";
+
 import { coinChangeFeed, fetchLiveStats, saveLiveStats, mapLiveStats } from "./livestats";
+import { ordersRouter } from "./orders";
 
 const app = express();
 const server = http.createServer(app);
 
 app.use(express.static("public"));
 
+// json form parser
+app.use(bodyParser.json());
+
+// query string parser
+app.use(bodyParser.urlencoded({ extended: true }));
+
+app.use("/", ordersRouter);
+
 server.listen(3000, () => console.log("Server listening on port 3000!"));
 
-const io = socketio.listen(server);
+/*const io = socketio.listen(server);
 
 const makeEmitUpdateCoin = (socket: socketio.Socket) => (value) => {
   let { Coin, Price, Low, High, Volume } = value;
@@ -72,4 +84,4 @@ const coins = ["BCH", "BTC", "BTG", "DASH", "ETH", "LTC", "NMC", "XRP", "ZEC"];
 coins.forEach(async coin => {
   let cursor = await coinChangeFeed(coin);
   displayCoinFeed(cursor);
-});
+});*/

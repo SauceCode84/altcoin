@@ -40,7 +40,7 @@ export const fetchLiveStats = async () => {
   }
 }
 
-const getConnection = () => r.connect(connectionConfig);
+export const getConnection = () => r.connect(connectionConfig);
 
 export const mapLiveStats = (liveStats: LiveStatsResponse) => {
   return Object.keys(liveStats)
