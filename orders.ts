@@ -437,24 +437,25 @@ const setupChangeFeed = async () => {
         return;
       }
 
-      let price: number;
       let buyUser = await getUser(buyTrade.userId);
       let sellUser = await getUser(sellTrade.userId);
+      
+      let price = getTradePrice(buyTrade, sellTrade);
 
       console.log("buyUser", buyUser);
       console.log("sellUser", sellUser);
 
       if (sellTrade.value === buyTrade.value) {
         // equal trades
-        if (sellTrade.timestamp.getTime() >= buyTrade.timestamp.getTime()) {
+        /*if (sellTrade.timestamp.getTime() >= buyTrade.timestamp.getTime()) {
           price = buyTrade.price;
           console.log("BUY MAKER");
         } else {
           price = sellTrade.price;
           console.log("SELL MAKER");
-        }
+        }*/
         
-        console.log("price", price);
+        //console.log("price", price);
 
         //let buyUser = await getUser(buyTrade.userId);
         //let sellUser = await getUser(sellTrade.userId);
@@ -520,7 +521,7 @@ const setupChangeFeed = async () => {
         console.log("done");
       } else if (sellTrade.value < buyTrade.value) {
         // more buyers than sellers
-        if (sellTrade.timestamp.getTime() >= buyTrade.timestamp.getTime()) {
+        /*if (sellTrade.timestamp.getTime() >= buyTrade.timestamp.getTime()) {
           price = buyTrade.price;
           console.log("BUY MAKER");
         } else {
@@ -528,7 +529,7 @@ const setupChangeFeed = async () => {
           console.log("SELL MAKER");
         }
 
-        console.log("price", price);
+        console.log("price", price);*/
         
         let value = sellTrade.value;
 
@@ -601,7 +602,7 @@ const setupChangeFeed = async () => {
 
       } else if (sellTrade.value > buyTrade.value) {
         // more sellers than buyers
-        if (sellTrade.timestamp.getTime() >= buyTrade.timestamp.getTime()) {
+        /*if (sellTrade.timestamp.getTime() >= buyTrade.timestamp.getTime()) {
           price = buyTrade.price;
           console.log("BUY MAKER");
         } else {
@@ -609,7 +610,7 @@ const setupChangeFeed = async () => {
           console.log("SELL MAKER");
         }
 
-        console.log("price", price);
+        console.log("price", price);*/
 
         let value = buyTrade.value;
 
