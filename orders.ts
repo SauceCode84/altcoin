@@ -589,8 +589,8 @@ const setupChangeFeed = async () => {
         //let sellUser = await getUser(sellTrade.userId);
         value = sellTrade.value;
 
-        let commissionValues = calculateCommissionValues(value);
-        let { tradeValueLessCommission, valueLessCommission } = commissionValues;
+        //let commissionValues = calculateCommissionValues(value);
+        //let { tradeValueLessCommission, valueLessCommission } = commissionValues;
 
         //let buyCommission = buyTrade.value * buyUser.tradeFees / 100;
         //let sellCommission = (sellTrade.value * price) * sellUser.tradeFees / 100;
@@ -599,7 +599,7 @@ const setupChangeFeed = async () => {
         //let tradeValue = buyTrade.value * price;
         //let tradeValueLessCommission = (buyTrade.value * price) - sellCommission;
         
-        await insertTradeHistory(value, commissionValues);
+        //await insertTradeHistory(value, commissionValues);
 
         /*await r.table("tradeHistory")
           .insert({
@@ -618,19 +618,19 @@ const setupChangeFeed = async () => {
         
         // update SELLERS balance
         ////await increaseUserBalance(sellUser.id, sellTrade.priceCurrency, tradeValueLessCommission);
-        await insertUserTransaction("sellOrderCompleted", sellUser.id, {
+        /*await insertUserTransaction("sellOrderCompleted", sellUser.id, {
           value: tradeValueLessCommission,
           currency: sellTrade.priceCurrency,
           orderId: sellTrade.orderId
-        });
+        });*/
 
         // update BUYERS balance
         ////await increaseUserBalance(buyUser.id, buyTrade.currency, valueLessCommission);
-        await insertUserTransaction("buyOrderCompleted", buyUser.id, {
+        /*await insertUserTransaction("buyOrderCompleted", buyUser.id, {
           value: valueLessCommission,
           currency: buyTrade.currency,
           orderId: buyTrade.orderId
-        });
+        });*/
 
         /*if (sellTrade.timestamp.getTime() < buyTrade.timestamp.getTime()) {
           let buyersChange = calculateBuyersChange(buyTrade.value);  //buyTrade.value * (buyTrade.price - sellTrade.price);
@@ -644,7 +644,7 @@ const setupChangeFeed = async () => {
         }*/
 
         // apply BUYERS change, where applicable
-        await applyBuyersChange(value);
+        //await applyBuyersChange(value);
 
         completeTradeFn = (buyTrade, sellTrade) => deleteTrades(buyTrade.id, sellTrade.id);
 
@@ -666,10 +666,10 @@ const setupChangeFeed = async () => {
 
         console.log("price", price);*/
         
-        let value = sellTrade.value;
+        value = sellTrade.value;
 
-        let commissionValues = calculateCommissionValues(value);
-        let { tradeValueLessCommission, valueLessCommission } = commissionValues;
+        //let commissionValues = calculateCommissionValues(value);
+        //let { tradeValueLessCommission, valueLessCommission } = commissionValues;
 
         //let buyCommission = sellTrade.value / 100 * buyUser.tradeFees;
         //let sellCommission = (sellTrade.value * price) / 100 * sellUser.tradeFees;
@@ -678,7 +678,7 @@ const setupChangeFeed = async () => {
         //let tradeValue = buyTrade.value * price;
         //let tradeValueLessCommission = (buyTrade.value * price) - sellCommission;
 
-        await insertTradeHistory(value, commissionValues);
+        //await insertTradeHistory(value, commissionValues);
 
         /*await r.table("tradeHistory")
           .insert({
@@ -697,19 +697,19 @@ const setupChangeFeed = async () => {
 
         // update SELLERS balance
         ////await increaseUserBalance(sellUser.id, sellTrade.priceCurrency, tradeValueLessCommission);
-        await insertUserTransaction("sellOrderCompleted", sellUser.id, {
+        /*await insertUserTransaction("sellOrderCompleted", sellUser.id, {
           value: tradeValueLessCommission,
           currency: sellTrade.priceCurrency,
           orderId: sellTrade.orderId
-        });
+        });*/
 
         // update BUYERS balance
         ////await increaseUserBalance(buyUser.id, buyTrade.currency, valueLessCommission);
-        await insertUserTransaction("buyOrderCompleted", buyUser.id, {
+        /*await insertUserTransaction("buyOrderCompleted", buyUser.id, {
           value: valueLessCommission,
           currency: buyTrade.currency,
           orderId: buyTrade.orderId
-        });
+        });*/
 
         // calculate BUYERS change, where applicable
         /*if (sellTrade.timestamp.getTime() < buyTrade.timestamp.getTime()) {
@@ -724,7 +724,7 @@ const setupChangeFeed = async () => {
         }*/
 
         // apply BUYERS change, where applicable
-        await applyBuyersChange(sellTrade.value);
+        //await applyBuyersChange(value);
 
         completeTradeFn = completePartialTrade;
         /*completeTradeFn = async (buyTrade, sellTrade) => {
@@ -754,10 +754,10 @@ const setupChangeFeed = async () => {
 
         console.log("price", price);*/
 
-        let value = buyTrade.value;
+        value = buyTrade.value;
 
-        let commissionValues = calculateCommissionValues(value);
-        let { tradeValueLessCommission, valueLessCommission } = commissionValues;
+        //let commissionValues = calculateCommissionValues(value);
+        //let { tradeValueLessCommission, valueLessCommission } = commissionValues;
 
         //let buyCommission = sellTrade.value / 100 * buyUser.tradeFees;
         //let sellCommission = (sellTrade.value * price) / 100 * sellUser.tradeFees;
@@ -766,7 +766,7 @@ const setupChangeFeed = async () => {
         //let tradeValue = buyTrade.value * price;
         //let tradeValueLessCommission = (buyTrade.value * price) - sellCommission;
 
-        await insertTradeHistory(value, commissionValues);
+        //await insertTradeHistory(value, commissionValues);
 
         /*await r.table("tradeHistory")
           .insert({
@@ -785,19 +785,19 @@ const setupChangeFeed = async () => {
 
         // update SELLERS balance
         ////await increaseUserBalance(sellUser.id, sellTrade.priceCurrency, tradeValueLessCommission);
-        await insertUserTransaction("sellOrderCompleted", sellUser.id, {
+        /*await insertUserTransaction("sellOrderCompleted", sellUser.id, {
           value: tradeValueLessCommission,
           currency: sellTrade.priceCurrency,
           orderId: sellTrade.orderId
-        });
+        });*/
 
         // update BUYERS balance
         ////await increaseUserBalance(buyUser.id, buyTrade.currency, valueLessCommission);
-        await insertUserTransaction("buyOrderCompleted", buyUser.id, {
+        /*await insertUserTransaction("buyOrderCompleted", buyUser.id, {
           value: valueLessCommission,
           currency: buyTrade.currency,
           orderId: buyTrade.orderId
-        });
+        });*/
 
         // calculate BUYERS change, where applicable
         /*if (sellTrade.timestamp.getTime() < buyTrade.timestamp.getTime()) {
@@ -812,7 +812,7 @@ const setupChangeFeed = async () => {
         }*/
 
         // apply BUYERS change, where applicable
-        await applyBuyersChange(buyTrade.value);
+        //await applyBuyersChange(value);
 
         completeTradeFn = completePartialTrade;
         /*completeTradeFn = async (buyTrade: Trade, sellTrade: Trade) => {
@@ -831,8 +831,34 @@ const setupChangeFeed = async () => {
             .run(connection);
         };*/
       }
+
+      // calculate trade values
+      let commissionValues = calculateCommissionValues(value);
+      let { tradeValueLessCommission, valueLessCommission } = commissionValues;
+
+      // insert trade history
+      await insertTradeHistory(value, commissionValues);
+
+      // update SELLERS balance
+      await insertUserTransaction("sellOrderCompleted", sellUser.id, {
+        value: tradeValueLessCommission,
+        currency: sellTrade.priceCurrency,
+        orderId: sellTrade.orderId
+      });
+
+      // update BUYERS balance
+      await insertUserTransaction("buyOrderCompleted", buyUser.id, {
+        value: valueLessCommission,
+        currency: buyTrade.currency,
+        orderId: buyTrade.orderId
+      });
+
+      // apply BUYERS change, where applicable
+      await applyBuyersChange(value);
       
+      // complete the trade
       await completeTradeFn(buyTrade, sellTrade);
+
       console.log("done");
     } while (true);
   });
