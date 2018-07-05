@@ -288,7 +288,8 @@ declare module "rethinkdb" {
     }
 
     interface SingleRowSequence<T extends object> extends Operation<T>, Writeable {
-      (prop: string): Sequence;
+      <K extends keyof T>(prop: K): Expression<T[K]>;
+      (prop: string): Expression<any>;
 
       changes(opts?: ChangesOptions): Sequence;
 
@@ -347,6 +348,9 @@ declare module "rethinkdb" {
         reduce(r: ReduceFunction<any>, base?: any): Expression<any>;
         count(): Expression<number>;
         
+        fold<T>(base: T, combiningFunction: FoldCombiningFunction): Expression<T>;
+        fold<T>(base: T, combiningFunction: FoldCombiningFunction, foldOptions: FoldOptions): Sequence;
+        
         sum(): Expression<number>;
         sum(field: string): Expression<number>;
         
@@ -382,8 +386,10 @@ declare module "rethinkdb" {
       reduction: TReduction;
     }
 
-    interface GroupedExpression<TGroup, TReduction> extends Expression<Grouping<TGroup, TReduction>> {
+    interface GroupedExpression<TGroup, TReduction> extends Expression<Grouping<TGroup, TReduction>[]> {
       count(): GroupedExpression<TGroup, number>;
+      sum(key: string): GroupedExpression<TGroup, number>;
+      ungroup(): Sequence;
     }
 
     type CoerceTypeMap = {
@@ -402,6 +408,16 @@ declare module "rethinkdb" {
 
     interface ReduceFunction<U> {
         (acc: Expression<any>, val: Expression<any>): Expression<U>;
+    }
+
+    type FoldCombiningFunction = (accumulator: Expression<any>, element: Expression<any>) => any | Expression<any>;
+    
+    type FoldEmitFunction = (previousAccumulator: Expression<any>, element: Expression<any>, accumulator: Expression<any>) => any;
+    type FoldFinalEmitFunction = () => void;
+
+    type FoldOptions = {
+      emit: FoldEmitFunction;
+      finalEmit?: FoldFinalEmitFunction;
     }
 
     interface InsertOptions {
@@ -470,7 +486,7 @@ declare module "rethinkdb" {
         lt(value: T): Expression<boolean>;
         le(value: T): Expression<boolean>;
 
-        add(n: number): Expression<number>;
+        add(n: number | Expression<number>): Expression<number>;
 
         /**
          * Subtract two numbers.
@@ -513,72 +529,72 @@ declare module "rethinkdb" {
          *   * 'majority' will only return values that are safely committed on disk on a majority of replicas. This requires sending a message to every replica on each read, so it is the slowest but most consistent.
          *   * 'outdated' will return values that are in memory on an arbitrarily-selected replica. This is the fastest but least consistent.
          */
-        readMode: "single" | "majority" | "outdated";
+        readMode?: "single" | "majority" | "outdated";
 
         /**
          * What format to return times in (default: 'native'). Set this to 'raw' if you want times returned as JSON objects for exporting.
          */
-        timeFormat: "native" | "raw";
+        timeFormat?: "native" | "raw";
 
         /**
          * Whether or not to return a profile of the query’s execution (default: false).
          */
-        profile: boolean;
+        profile?: boolean;
 
         /**
          * Possible values are 'hard' and 'soft'. In soft durability mode RethinkDB will acknowledge the write immediately after receiving it, but before the write has been committed to disk.
          */
-        durability: "hard" | "soft";
+        durability?: "hard" | "soft";
 
         /**
          * What format to return `grouped_data` and `grouped_streams` in (default: 'native'). Set this to 'raw' if you want the raw pseudotype.
          */
-        groupFormat: "native" | "raw";
+        groupFormat?: "native" | "raw";
 
         /**
          * Set to `true` to not receive the result object or cursor and return immediately.
          */
-        noreply: boolean;
+        noreply?: boolean;
 
         /**
          * The database to run this query against as a string. The default is the database specified in the db parameter to connect (which defaults to test). The database may also be specified with the db command.
          */
-        db: string;
+        db?: string;
 
         /**
          * The maximum numbers of array elements that can be returned by a query (default: 100,000). This affects all ReQL commands that return arrays. Note that it has no effect on the size of arrays being written to the database; those always have an upper limit of 100,000 elements.
          */
-        arrayLimit: number;
+        arrayLimit?: number;
 
         /**
          * What format to return binary data in (default: 'native'). Set this to 'raw' if you want the raw pseudotype.
          */
-        binaryFormat: "native" | "raw";
+        binaryFormat?: "native" | "raw";
 
         /**
          * Minimum number of rows to wait for before batching a result set (default: 8). This is an integer.
          */
-        minBatchRows: number;
+        minBatchRows?: number;
 
         /**
          * Maximum number of rows to wait for before batching a result set (default: unlimited). This is an integer.
          */
-        maxBatchRows: number;
+        maxBatchRows?: number;
 
         /**
          * Maximum number of bytes to wait for before batching a result set (default: 1MB). This is an integer.
          */
-        maxBatchBytes: number;
+        maxBatchBytes?: number;
 
         /**
          * Maximum number of seconds to wait before batching a result set (default: 0.5). This is a float (not an integer) and may be specified to the microsecond.
          */
-        maxBatchSeconds: number;
+        maxBatchSeconds?: number;
 
         /**
          * Factor to scale the other parameters down by on the first batch (default: 4). For example, with this set to 8 and maxBatchRows set to 80, on the first batch maxBatchRows will be adjusted to 10 (80 / 8). This allows the first batch to return faster.
          */
-        firstBatchScaledownFactor: number;
+        firstBatchScaledownFactor?: number;
     }
 
     interface Operation<T> {

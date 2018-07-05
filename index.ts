@@ -6,6 +6,9 @@ import * as socketio from "socket.io";
 
 import { coinChangeFeed, fetchLiveStats, saveLiveStats, mapLiveStats } from "./livestats";
 import { ordersRouter } from "./orders";
+import { setupTransactionFeed } from "./transactionFeed";
+
+setupTransactionFeed();
 
 const app = express();
 const server = http.createServer(app);
