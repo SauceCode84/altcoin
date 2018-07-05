@@ -431,6 +431,21 @@ const getTradePrice = (buyTrade: Trade, sellTrade: Trade) => {
   }
 }
 
+const deleteTrades = async (...ids: string[]) => {
+  await r.table("trades")
+    .getAll(r.args(ids))
+    .delete()
+    .run(connection);
+}
+
+const processTrade = (buyTrade: Trade, sellTrade: Trade) => {
+  const process = async () => {
+
+  }
+
+  return process();
+}
+
 const setupChangeFeed = async () => {
   let sellTradesCursor = await r.table("trades")
     //.orderBy({ index: "priceTimestamp" })
@@ -512,12 +527,7 @@ const setupChangeFeed = async () => {
           .run(connection);
       }
 
-      const deleteTrades = async (...ids: string[]) => {
-        await r.table("trades")
-          .getAll(r.args(ids))
-          .delete()
-          .run(connection);
-      }
+      
 
       const calculateBuyersChange = (value: number) => {
         let tradeValue = new Decimal(value);
@@ -533,11 +543,13 @@ const setupChangeFeed = async () => {
         if (sellTrade.timestamp.getTime() < buyTrade.timestamp.getTime()) {
           let buyersChange = calculateBuyersChange(value);
 
-          await insertUserTransaction("buyersChange", buyUser.id, {
-            value: buyersChange,
-            currency: buyTrade.priceCurrency,
-            orderId: buyTrade.orderId
-          });
+          if (buyersChange > 0) {
+            await insertUserTransaction("buyersChange", buyUser.id, {
+              value: buyersChange,
+              currency: buyTrade.priceCurrency,
+              orderId: buyTrade.orderId
+            });
+          }
         }
       }
 
@@ -575,261 +587,19 @@ const setupChangeFeed = async () => {
 
       if (sellTrade.value === buyTrade.value) {
         // equal trades
-        /*if (sellTrade.timestamp.getTime() >= buyTrade.timestamp.getTime()) {
-          price = buyTrade.price;
-          console.log("BUY MAKER");
-        } else {
-          price = sellTrade.price;
-          console.log("SELL MAKER");
-        }*/
-        
-        //console.log("price", price);
-
-        //let buyUser = await getUser(buyTrade.userId);
-        //let sellUser = await getUser(sellTrade.userId);
         value = sellTrade.value;
-
-        //let commissionValues = calculateCommissionValues(value);
-        //let { tradeValueLessCommission, valueLessCommission } = commissionValues;
-
-        //let buyCommission = buyTrade.value * buyUser.tradeFees / 100;
-        //let sellCommission = (sellTrade.value * price) * sellUser.tradeFees / 100;
-        //let valueLessCommission = value - buyCommission;
-        //let priceLessCommission = price - (price * sellUser.tradeFees / 100);
-        //let tradeValue = buyTrade.value * price;
-        //let tradeValueLessCommission = (buyTrade.value * price) - sellCommission;
-        
-        //await insertTradeHistory(value, commissionValues);
-
-        /*await r.table("tradeHistory")
-          .insert({
-            buyersId: buyUser.id,
-            sellersId: sellUser.id,
-            buyOrderId: buyTrade.orderId,
-            sellOrderId: sellTrade.orderId,
-            value,
-            currency: buyTrade.currency,
-            price,
-            priceCurrency: sellTrade.priceCurrency,
-            ...commissionValues,
-            timestamp: r.now()
-          })
-          .run(connection);*/
-        
-        // update SELLERS balance
-        ////await increaseUserBalance(sellUser.id, sellTrade.priceCurrency, tradeValueLessCommission);
-        /*await insertUserTransaction("sellOrderCompleted", sellUser.id, {
-          value: tradeValueLessCommission,
-          currency: sellTrade.priceCurrency,
-          orderId: sellTrade.orderId
-        });*/
-
-        // update BUYERS balance
-        ////await increaseUserBalance(buyUser.id, buyTrade.currency, valueLessCommission);
-        /*await insertUserTransaction("buyOrderCompleted", buyUser.id, {
-          value: valueLessCommission,
-          currency: buyTrade.currency,
-          orderId: buyTrade.orderId
-        });*/
-
-        /*if (sellTrade.timestamp.getTime() < buyTrade.timestamp.getTime()) {
-          let buyersChange = calculateBuyersChange(buyTrade.value);  //buyTrade.value * (buyTrade.price - sellTrade.price);
-
-          ////await increaseUserBalance(buyUser.id, buyTrade.priceCurrency, buyersChange);
-          await insertUserTransaction("buyersChange", buyUser.id, {
-            value: buyersChange,
-            currency: buyTrade.priceCurrency,
-            orderId: buyTrade.orderId
-          });
-        }*/
-
-        // apply BUYERS change, where applicable
-        //await applyBuyersChange(value);
 
         completeTradeFn = (buyTrade, sellTrade) => deleteTrades(buyTrade.id, sellTrade.id);
-
-        /*await r.table("trades")
-          .getAll(r.args([ buyTrade.id, sellTrade.id ]))
-          .delete()
-          .run(connection);*/
-        
-        
       } else if (sellTrade.value < buyTrade.value) {
         // more buyers than sellers
-        /*if (sellTrade.timestamp.getTime() >= buyTrade.timestamp.getTime()) {
-          price = buyTrade.price;
-          console.log("BUY MAKER");
-        } else {
-          price = sellTrade.price;
-          console.log("SELL MAKER");
-        }
-
-        console.log("price", price);*/
-        
         value = sellTrade.value;
 
-        //let commissionValues = calculateCommissionValues(value);
-        //let { tradeValueLessCommission, valueLessCommission } = commissionValues;
-
-        //let buyCommission = sellTrade.value / 100 * buyUser.tradeFees;
-        //let sellCommission = (sellTrade.value * price) / 100 * sellUser.tradeFees;
-        //let valueLessCommission = value - buyCommission;
-        //let priceLessCommission = price - (price * sellUser.tradeFees / 100);
-        //let tradeValue = buyTrade.value * price;
-        //let tradeValueLessCommission = (buyTrade.value * price) - sellCommission;
-
-        //await insertTradeHistory(value, commissionValues);
-
-        /*await r.table("tradeHistory")
-          .insert({
-            buyersId: buyUser.id,
-            sellersId: sellUser.id,
-            buyOrderId: buyTrade.orderId,
-            sellOrderId: sellTrade.orderId,
-            value,
-            currency: buyTrade.currency,
-            price,
-            priceCurrency: sellTrade.priceCurrency,
-            ...commissionValues,
-            timestamp: r.now()
-          })
-          .run(connection);*/
-
-        // update SELLERS balance
-        ////await increaseUserBalance(sellUser.id, sellTrade.priceCurrency, tradeValueLessCommission);
-        /*await insertUserTransaction("sellOrderCompleted", sellUser.id, {
-          value: tradeValueLessCommission,
-          currency: sellTrade.priceCurrency,
-          orderId: sellTrade.orderId
-        });*/
-
-        // update BUYERS balance
-        ////await increaseUserBalance(buyUser.id, buyTrade.currency, valueLessCommission);
-        /*await insertUserTransaction("buyOrderCompleted", buyUser.id, {
-          value: valueLessCommission,
-          currency: buyTrade.currency,
-          orderId: buyTrade.orderId
-        });*/
-
-        // calculate BUYERS change, where applicable
-        /*if (sellTrade.timestamp.getTime() < buyTrade.timestamp.getTime()) {
-          let buyersChange = calculateBuyersChange(sellTrade.value);  //sellTrade.value * (buyTrade.price - sellTrade.price);
-          
-          ////await increaseUserBalance(buyUser.id, buyTrade.priceCurrency, buyersChange);
-          await insertUserTransaction("buyersChange", buyUser.id, {
-            value: buyersChange,
-            currency: buyTrade.priceCurrency,
-            orderId: buyTrade.orderId
-          });
-        }*/
-
-        // apply BUYERS change, where applicable
-        //await applyBuyersChange(value);
-
         completeTradeFn = completePartialTrade;
-        /*completeTradeFn = async (buyTrade, sellTrade) => {
-          // SELL trade completed
-          await r.table("trades")
-            .get(sellTrade.id)
-            .delete()
-            .run(connection);
-
-          let newBuyValue = new Decimal(buyTrade.value).sub(sellTrade.value).toFixed(8);
-
-          // BUY trade updated
-          await r.table("trades")
-            .get(buyTrade.id)
-            .update({ value: new Decimal(newBuyValue).toNumber() })
-            .run(connection);
-        };*/
       } else if (sellTrade.value > buyTrade.value) {
         // more sellers than buyers
-        /*if (sellTrade.timestamp.getTime() >= buyTrade.timestamp.getTime()) {
-          price = buyTrade.price;
-          console.log("BUY MAKER");
-        } else {
-          price = sellTrade.price;
-          console.log("SELL MAKER");
-        }
-
-        console.log("price", price);*/
-
         value = buyTrade.value;
 
-        //let commissionValues = calculateCommissionValues(value);
-        //let { tradeValueLessCommission, valueLessCommission } = commissionValues;
-
-        //let buyCommission = sellTrade.value / 100 * buyUser.tradeFees;
-        //let sellCommission = (sellTrade.value * price) / 100 * sellUser.tradeFees;
-        //let valueLessCommission = value - buyCommission;
-        //let priceLessCommission = price - (price * sellUser.tradeFees / 100);
-        //let tradeValue = buyTrade.value * price;
-        //let tradeValueLessCommission = (buyTrade.value * price) - sellCommission;
-
-        //await insertTradeHistory(value, commissionValues);
-
-        /*await r.table("tradeHistory")
-          .insert({
-            buyersId: buyUser.id,
-            sellersId: sellUser.id,
-            buyOrderId: buyTrade.orderId,
-            sellOrderId: sellTrade.orderId,
-            value,
-            currency: buyTrade.currency,
-            price,
-            priceCurrency: sellTrade.priceCurrency,
-            ...commissionValues,
-            timestamp: r.now()
-          })
-          .run(connection);*/
-
-        // update SELLERS balance
-        ////await increaseUserBalance(sellUser.id, sellTrade.priceCurrency, tradeValueLessCommission);
-        /*await insertUserTransaction("sellOrderCompleted", sellUser.id, {
-          value: tradeValueLessCommission,
-          currency: sellTrade.priceCurrency,
-          orderId: sellTrade.orderId
-        });*/
-
-        // update BUYERS balance
-        ////await increaseUserBalance(buyUser.id, buyTrade.currency, valueLessCommission);
-        /*await insertUserTransaction("buyOrderCompleted", buyUser.id, {
-          value: valueLessCommission,
-          currency: buyTrade.currency,
-          orderId: buyTrade.orderId
-        });*/
-
-        // calculate BUYERS change, where applicable
-        /*if (sellTrade.timestamp.getTime() < buyTrade.timestamp.getTime()) {
-          let buyersChange = calculateBuyersChange(buyTrade.value);  //buyTrade.value * (buyTrade.price - sellTrade.price);
-          
-          ////await increaseUserBalance(buyUser.id, buyTrade.priceCurrency, buyersChange);
-          await insertUserTransaction("buyersChange", buyUser.id, {
-            value: buyersChange,
-            currency: buyTrade.priceCurrency,
-            orderId: buyTrade.orderId
-          });
-        }*/
-
-        // apply BUYERS change, where applicable
-        //await applyBuyersChange(value);
-
         completeTradeFn = completePartialTrade;
-        /*completeTradeFn = async (buyTrade: Trade, sellTrade: Trade) => {
-          // BUY trade completed
-          await r.table("trades")
-            .get(buyTrade.id)
-            .delete()
-            .run(connection);
-
-          let newSellValue = new Decimal(sellTrade.value).sub(buyTrade.value).toFixed(8);
-
-          // SELL trade updated
-          await r.table("trades")
-            .get(sellTrade.id)
-            .update({ value: new Decimal(newSellValue).toNumber() })
-            .run(connection);
-        };*/
       }
 
       // calculate trade values
