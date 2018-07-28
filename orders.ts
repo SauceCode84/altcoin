@@ -5,6 +5,7 @@ import { Router } from "express";
 import { Decimal } from "decimal.js";
 
 import { getConnection } from "./livestats";
+import { User, Currencies } from "./types";
 
 interface Order {
   id?: string;
@@ -208,25 +209,18 @@ const randomBuyOrders = async (count: number) => {
   console.timeEnd("randomBuyOrders");
 }
 
-interface User {
-  id: string;
-  username: string;
-  tradeFees: number;
-  balances: Balances;
-}
-
-export type Currencies = "BTC" | "ETH" | "XRP" | "ZAR";
-
-type Balances = {
-  [currency in Currencies]: number;
-}
-
-type UserBalances = { id: string; } & Balances;
-
 const getUser = async (id: string) => {
   return await r.table("users")
     .get<User>(id)
     .run(connection);
+}
+
+const getUsers = async (...ids: string[]) => {
+  let cursor = await r.table("users")
+    .getAll(r.args(ids))
+    .run(connection);
+
+  return await cursor.toArray<User>();
 }
 
 const getUserBalances = async (id: string) => {
@@ -243,7 +237,7 @@ const getUserBalance = async (userId: string, currency: Currencies) => {
 
 export const increaseUserBalance = async (userId: string, currency: Currencies, value: number) => {
   let userBalance = await getUserBalance(userId, currency);
-  let newBalance = new Decimal(userBalance).add(value).toFixed(8);
+  let newBalance = new Decimal(userBalance || 0).add(value).toFixed(8);
 
   await r.table("users")
     .get(userId)
@@ -253,7 +247,7 @@ export const increaseUserBalance = async (userId: string, currency: Currencies, 
 
 export const decreaseUserBalance = async (userId: string, currency: Currencies, value: number) => {
   let userBalance = await getUserBalance(userId, currency);
-  let newBalance = new Decimal(userBalance).sub(value).toFixed(8);
+  let newBalance = new Decimal(userBalance || 0).sub(value).toFixed(8);
 
   await r.table("users")
     .get(userId)
@@ -431,6 +425,58 @@ const getTradePrice = (buyTrade: Trade, sellTrade: Trade) => {
   }
 }
 
+const getTradeValue = (buyTrade: Trade, sellTrade: Trade) => {
+  if (sellTrade.value === buyTrade.value) {
+    // equal trades
+    return sellTrade.value;
+  } else if (sellTrade.value < buyTrade.value) {
+    // more buyers than sellers
+    return sellTrade.value;
+  } else if (sellTrade.value > buyTrade.value) {
+    // more sellers than buyers
+    return buyTrade.value;
+  }
+}
+
+const getCompleteTradeFunction = (buyTrade: Trade, sellTrade: Trade): CompleteTradeFunction => {
+  if (sellTrade.value === buyTrade.value) {
+    // equal trades
+    return completeEqualTrade;
+  }
+
+  // partial trades
+  return completePartialTrade;
+}
+
+const completeEqualTrade = (buyTrade: Trade, sellTrade: Trade) => deleteTrades(buyTrade.id, sellTrade.id);
+
+const completePartialTrade = async (buyTrade: Trade, sellTrade: Trade) => {
+  let completedTrade: Trade;
+  let partialTrade: Trade;
+
+  if (sellTrade.value < buyTrade.value) {
+    completedTrade = sellTrade;
+    partialTrade = buyTrade;
+  } else if (sellTrade.value > buyTrade.value) {
+    completedTrade = buyTrade;
+    partialTrade = sellTrade;
+  }
+
+  let newTradeValue = new Decimal(partialTrade.value).sub(completedTrade.value).toFixed(8);
+  
+  // trade completed
+  await r.table("trades")
+    .get(completedTrade.id)
+    .delete()
+    .run(connection);
+
+  // partial trade updated
+  await r.table("trades")
+    .get(partialTrade.id)
+    .update({ value: new Decimal(newTradeValue).toNumber() })
+    .run(connection);
+};
+
 const deleteTrades = async (...ids: string[]) => {
   await r.table("trades")
     .getAll(r.args(ids))
@@ -438,28 +484,32 @@ const deleteTrades = async (...ids: string[]) => {
     .run(connection);
 }
 
-const processTrade = (buyTrade: Trade, sellTrade: Trade) => {
+const processTrade = async (buyTrade: Trade, sellTrade: Trade) => {
+  const price = getTradePrice(buyTrade, sellTrade);
+
+  const buyUser = await getUser(buyTrade.userId);
+  const sellUser = await getUser(sellTrade.userId);
+
   const process = async () => {
 
   }
 
-  return process();
+  return await process();
 }
 
-const setupChangeFeed = async () => {
+type CompleteTradeFunction = (buyTrade: Trade, sellTrade: Trade) => Promise<void>;
+
+type TradingPair = { currency: Currencies, priceCurrency: Currencies };
+
+const initialiseTradeEngine = async (tradingPair: TradingPair) => {
   let sellTradesCursor = await r.table("trades")
-    //.orderBy({ index: "priceTimestamp" })
-    .filter({ currency: "BTC", active: true })
+    .filter({ ...tradingPair, active: true })
     .changes({ includeInitial: true })
     .run(connection);
 
-  sellTradesCursor.eachAsync(async (change: r.Change<Trade>) => {
-    //console.log("change:", change);
+  console.log(`Initialise Trade Engine for ${ tradingPair.currency }:${ tradingPair.priceCurrency }`);
 
-    /*if (!change.new_val) {
-      return;
-    }*/
-
+  sellTradesCursor.eachAsync(async () => {
     do {
       let sellTrade: Trade = await getLowestSellTrade();
       
@@ -469,29 +519,21 @@ const setupChangeFeed = async () => {
 
       let buyTrade: Trade = await getNextBuyTrade(sellTrade.price);
 
-      console.log("buyTrade", buyTrade);
-      console.log("sellTrade", sellTrade);
-
       if (!buyTrade || !sellTrade) {
         return;
       }
-      
-      let price = getTradePrice(buyTrade, sellTrade);
 
-      let buyUser = await getUser(buyTrade.userId);
-      let sellUser = await getUser(sellTrade.userId);
+      console.log("buyTrade", buyTrade);
+      console.log("sellTrade", sellTrade);
       
-      console.log("buyUser", buyUser);
-      console.log("sellUser", sellUser);
-
       const calculateCommissionValues = (value: number): CommissionValues => {
         let priceDecimal = new Decimal(price);
         let valueDecimal = new Decimal(value);
 
         let buyTradeValue = new Decimal(buyTrade.value);
-        let buyTradeFees = new Decimal(buyUser.tradeFees);
+        let buyTradeFees = new Decimal(buyUser.tradingFees);
         let sellTradeValue = new Decimal(sellTrade.value);
-        let sellTradeFees = new Decimal(sellUser.tradeFees);
+        let sellTradeFees = new Decimal(sellUser.tradingFees);
 
         let buyCommission = buyTradeValue.mul(buyTradeFees).div(100);
         let sellCommission = sellTradeValue.mul(priceDecimal).mul(sellTradeFees).div(100);
@@ -527,8 +569,6 @@ const setupChangeFeed = async () => {
           .run(connection);
       }
 
-      
-
       const calculateBuyersChange = (value: number) => {
         let tradeValue = new Decimal(value);
         let buyPrice = new Decimal(buyTrade.price);
@@ -553,54 +593,15 @@ const setupChangeFeed = async () => {
         }
       }
 
-      const completePartialTrade = async (buyTrade: Trade, sellTrade: Trade) => {
-        let completedTrade: Trade;
-        let partialTrade: Trade;
-
-        if (sellTrade.value < buyTrade.value) {
-          completedTrade = sellTrade;
-          partialTrade = buyTrade;
-        } else if (sellTrade.value > buyTrade.value) {
-          completedTrade = buyTrade;
-          partialTrade = sellTrade;
-        }
-
-        let newTradeValue = new Decimal(partialTrade.value).sub(completedTrade.value).toFixed(8);
-        
-        // trade completed
-        await r.table("trades")
-          .get(completedTrade.id)
-          .delete()
-          .run(connection);
-
-        // partial trade updated
-        await r.table("trades")
-          .get(partialTrade.id)
-          .update({ value: new Decimal(newTradeValue).toNumber() })
-          .run(connection);
-      };
-
-      let value: number;
+      let [ buyUser, sellUser ] = await getUsers(buyTrade.userId, sellTrade.userId);
       
-      type CompleteTradeFunction = (buyTrade: Trade, sellTrade: Trade) => Promise<void>;
-      let completeTradeFn: CompleteTradeFunction;
+      console.log("buyUser", buyUser);
+      console.log("sellUser", sellUser);
 
-      if (sellTrade.value === buyTrade.value) {
-        // equal trades
-        value = sellTrade.value;
-
-        completeTradeFn = (buyTrade, sellTrade) => deleteTrades(buyTrade.id, sellTrade.id);
-      } else if (sellTrade.value < buyTrade.value) {
-        // more buyers than sellers
-        value = sellTrade.value;
-
-        completeTradeFn = completePartialTrade;
-      } else if (sellTrade.value > buyTrade.value) {
-        // more sellers than buyers
-        value = buyTrade.value;
-
-        completeTradeFn = completePartialTrade;
-      }
+      // get the trade parameters
+      let price = getTradePrice(buyTrade, sellTrade);
+      let value = getTradeValue(buyTrade, sellTrade);
+      let completeTradeFn = getCompleteTradeFunction(buyTrade, sellTrade);
 
       // calculate trade values
       let commissionValues = calculateCommissionValues(value);
@@ -657,6 +658,9 @@ const setupChangeFeed = async () => {
   return !isEmpty;
 }*/
 
+const BTC_ZAR: TradingPair = { currency: "BTC", priceCurrency: "ZAR" };
+const ADA_ZAR: TradingPair = { currency: "ADA", priceCurrency: "ZAR" };
+
 const test = async () => {
   if (!connection) {
     connection = await getConnection();
@@ -665,7 +669,8 @@ const test = async () => {
   try {
     //await clearTables();
 
-    await setupChangeFeed();
+    await initialiseTradeEngine(BTC_ZAR);
+    await initialiseTradeEngine(ADA_ZAR);
     //await resetBalances();
 
     let userRU = await getUser("98a8e956-2c60-4acc-b9b5-6132c0fe9de8");
@@ -685,24 +690,26 @@ const test = async () => {
 
     //await placeBuyOrder(userRU.id, { value: 0.003, currency: "BTC", price: 100000, priceCurrency: "ZAR" });
 
-    await testGroup();
+    await setupOrderBookStream(BTC_ZAR);
+    await setupOrderBookStream(ADA_ZAR);
+    //await getChartData();
   } catch (err) {
     console.error(err);
   }
 }
 
-test();
+//test();
 
 type OrderBook = {
   [type in TradeType]: { [price: number]: number }
 }
 
-const testGroup = async () => {
+const setupOrderBookStream = async (tradingPair: TradingPair) => {
   type Test = { price: number, total: number };
 
   try {
     let cursor = await r.table("trades")
-      .filter({ currency: "BTC" })
+      .filter(tradingPair)
       .changes({ includeInitial: true, includeTypes: true })
       .run(connection);
 
@@ -751,6 +758,132 @@ const testGroup = async () => {
   }
 }
 
+const getChartData = async () => {
+  const coeff = 60 * 10;
+
+  let cursor = await r.db("altcoin")
+    .table("tradeHistory")
+    .merge((trade) => {
+      return {
+        period: r.round(trade("timestamp").toEpochTime().div(coeff)).mul(coeff)
+      }
+    })
+    .group("period")
+    .map((trade) => {
+      return {
+        value: trade("value"),
+        price: trade("price"),
+        timestamp: trade("timestamp").toEpochTime()
+      }
+    })
+    /*.do((periodGroup: r.Sequence) => {
+      return {
+        count: periodGroup.sum("count"),
+        volume: periodGroup.sum("value"),
+        open: periodGroup.orderBy("timestamp").nth(0)("price"),
+        close: periodGroup.orderBy("timestamp").nth(-1)("price"),
+        high: periodGroup.max("price")("price"),
+        low: periodGroup.min("price")("price")
+      }
+    })
+    .ungroup()
+    .map((data) => {
+      return {
+        timestamp: r.epochTime(data("group")),
+        volume: data("reduction")("volume"),
+        open: data("reduction")("open"),
+        close: data("reduction")("close"),
+        high: data("reduction")("high"),
+        low: data("reduction")("low")
+      }
+    })*/
+    .run(connection);
+
+    let result = await cursor.toArray<ChartDataGroup>();
+
+    result.map(grouping => {
+      let data = grouping.reduction.sort((a, b) => {
+        if (a.timestamp > b.timestamp) return 1;
+        if (a.timestamp < b.timestamp) return -1;
+        return 0;
+      });
+
+      return {
+        period: convertEpochTime(grouping.group),
+        volume: sum(grouping.reduction, (group) => group.value),
+        low: min(grouping.reduction, (group) => group.price),
+        high: max(grouping.reduction, (group) => group.price),
+        open: first(data, x => x.price),
+        close: last(data, x => x.price)
+      };
+    })
+    .forEach(({ period, volume, low, high, open, close }) => {
+      console.log(`Period: ${ period }`);
+      console.log(`Volume: ${ volume }`);
+      console.log(`Low: ${ low }`);
+      console.log(`High: ${ high }`);
+      console.log(`Open: ${ open }`);
+      console.log(`Close: ${ close }`);
+    })
+}
+
+const sum = <T>(values: T[], selector: (value: T) => number) => 
+  values.reduce((previous, current) => {
+    let prevValue = new Decimal(previous);
+        
+    return prevValue.add(selector(current)).toNumber();
+  }, 0);
+
+const min = <T>(values: T[], selector: (value: T) => number) => {
+  let result = values.reduce((previous, current) => {
+    return selector(previous) < selector(current) ? previous : current;
+  });
+
+  return selector(result);
+}
+
+const max = <T>(values: T[], selector: (value: T) => number) => {
+  let result = values.reduce((previous, current) => {
+    return selector(previous) > selector(current) ? previous : current;
+  });
+
+  return selector(result);
+}
+
+const first = <T, U>(values: T[], selector: (value: T) => U) => {
+  if (values.length === 0) {
+    return null;
+  }
+
+  return selector(values[0]);
+}
+
+const last = <T, U>(values: T[], selector: (value: T) => U) => {
+  if (values.length === 0) {
+    return null;
+  }
+
+  return selector(values[values.length - 1]);
+};
+
+
+const convertEpochTime = (value: number) => {
+  let date = new Date(0);
+  date.setUTCSeconds(value);
+
+  return date;
+}
+
+type ChartDataGroupReduction = {
+  price: number;
+  timestamp: number;
+  value: number
+};
+
+type ChartDataGroup = {
+  group: number;
+  reduction: ChartDataGroupReduction[];
+};
 
   
 

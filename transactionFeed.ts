@@ -2,9 +2,12 @@ import * as r from "rethinkdb";
 import Decimal from "decimal.js";
 
 import { getConnection } from "./livestats";
-import { Currencies, increaseUserBalance, decreaseUserBalance } from "./orders";
+import { increaseUserBalance, decreaseUserBalance } from "./orders";
+import { Currencies } from "./types";
 
 type TransactionType =
+  "deposit" |
+  "withdrawal" |
   "buyOrderCreated" |
   "buyOrderCompleted" |
   "sellOrderCreated" |
@@ -42,6 +45,10 @@ export const setupTransactionFeed = async () => {
     let { type, userId, currency, value, priceCurrency, price } = transaction;
 
     switch (type) {
+      case "deposit":
+        await increaseUserBalance(userId, currency, value);
+        break;
+
       case "buyOrderCreated":
         let orderValue = new Decimal(value).mul(price).toFixed(8);
         await decreaseUserBalance(userId, priceCurrency, new Decimal(orderValue).toNumber());

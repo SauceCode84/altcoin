@@ -47,6 +47,7 @@ declare module "rethinkdb" {
     export var count: Aggregator;
     export function sum(prop: string): Aggregator;
     export function avg(prop: string): Aggregator;
+    export function round(value: number | Expression<number>): Expression<number>;
 
     export const row: Row;
     export function expr(value: any): Expression<any>;
@@ -56,6 +57,8 @@ declare module "rethinkdb" {
     export function now(): Expression<Time>;
 
     export function object(key: string, value: any, ...args): object;
+
+    export function epochTime(value: any | Expression<any>): Expression<number>;
 
     // Control Structures
     export function branch(predicate: boolean | Expression<boolean>, trueBranch: any | Expression<any>, falseBranch: any | Expression<any>): Expression<any>;
@@ -353,11 +356,18 @@ declare module "rethinkdb" {
         
         sum(): Expression<number>;
         sum(field: string): Expression<number>;
+
+        min(prop?: string): Expression<number>;
+        max(prop?: string): Expression<number>;
         
         distinct(): Sequence;
+        
         groupedMapReduce(group: ExpressionFunction<any>, map: ExpressionFunction<any>, reduce: ReduceFunction<any>, base?: any): Sequence;
         groupBy(...aggregators: Aggregator[]): Expression<Object>; // TODO: reduction object
         group<T>(key: keyof T): GroupedExpression<T[keyof T], T[]>;
+
+        ungroup(): Sequence;
+
         contains(prop: string): Expression<boolean>;
 
         // Manipulation
@@ -379,6 +389,8 @@ declare module "rethinkdb" {
          * @param value The default value or function
          */
         default<T>(value: T | ((err: Error) => Expression<T>)): Sequence;
+
+        do(doFunction: (doc: any) => any): Sequence;
     }
 
     interface Grouping<TGroup, TReduction> {
@@ -389,6 +401,7 @@ declare module "rethinkdb" {
     interface GroupedExpression<TGroup, TReduction> extends Expression<Grouping<TGroup, TReduction>[]> {
       count(): GroupedExpression<TGroup, number>;
       sum(key: string): GroupedExpression<TGroup, number>;
+      map(transform: (doc: Expression<any>) => any): Sequence;
       ungroup(): Sequence;
     }
 
@@ -519,6 +532,8 @@ declare module "rethinkdb" {
         downcase(): Expression<string>;
 
         default(value: T): Expression<T>;
+
+        toEpochTime(): Expression<number>;
     }
 
     interface OperationOptions {
