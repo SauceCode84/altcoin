@@ -623,7 +623,7 @@ const initialiseTradeEngine = async (tradingPair: TradingPair) => {
         currency: buyTrade.currency,
         orderId: buyTrade.orderId
       });
-
+      
       // apply BUYERS change, where applicable
       await applyBuyersChange(value);
       

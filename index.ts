@@ -3,7 +3,7 @@ import * as http from "http";
 import * as bodyParser from "body-parser";
 
 import * as socketio from "socket.io";
-import { testPg } from "./pg";
+import { testPg, ordersRouter } from "./pg";
 
 //import { coinChangeFeed, fetchLiveStats, saveLiveStats, mapLiveStats } from "./livestats";
 //import { ordersRouter } from "./orders";
@@ -22,7 +22,7 @@ app.use(bodyParser.json());
 // query string parser
 app.use(bodyParser.urlencoded({ extended: true }));
 
-//app.use("/", ordersRouter);
+app.use("/", ordersRouter);
 
 testPg();
 

@@ -1,10 +1,11 @@
 import { Client, types } from "pg";
 
 import { Subject, from } from "rxjs";
-import { concatMap } from "rxjs/operators";
+import { concatMap, tap } from "rxjs/operators";
 
 import { User, Currencies, TradingPair, Trade, TradeType, CommissionValues } from "./types";
 import { Decimal } from "decimal.js";
+import { Router } from "express";
 
 types.setTypeParser(1700, "text", (value: string) => {
   return new Decimal(value).toNumber();
@@ -29,6 +30,45 @@ const getUserBalance = async (id: string, currency: Currencies) => {
   const user = await getUser(id);
 
   return user.balances[currency] || 0;
+}
+
+interface UserTransaction {
+  id: string;
+  timestamp: Date;
+  user_id: string;
+  type: UserTransactionType;
+  order_id: string;
+  currency: Currencies;
+  value: number;
+  price_currency?: Currencies;
+  price?: number;
+}
+
+type UserTransactionType =
+  "deposit" |
+  "withdrawal" |
+  "buyOrderCreated" |
+  "buyOrderCompleted" |
+  "sellOrderCreated" |
+  "sellOrderCompleted" |
+  "buyersChange";
+
+interface UserTransactionData {
+  orderId?: string;
+  currency?: Currencies;
+  value?: number;
+  priceCurrency?: Currencies;
+  price?: number;
+}
+
+const insertUserTransaction = async (userId: string, type: UserTransactionType, transactionData: UserTransactionData) => {
+  const sql = `INSERT INTO user_transactions (user_id, type, order_id, currency, value, price_currency, price)
+    VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`;
+  let { orderId, currency, value, priceCurrency, price } = transactionData;
+
+  let result = await client.query(sql, [userId, type, orderId, currency, value, priceCurrency, price]);
+
+  return result.rows[0].id as string;
 }
 
 interface Order {
@@ -101,6 +141,10 @@ const placeOrder = (type: OrderType) => async (userId: string, order: PlaceOrder
     }
   }
 
+  const transactionTypeForOrder = () => {
+    return (type + "OrderCreated") as UserTransactionType;
+  }
+
   let hasSufficientFunds = await hasSufficientFundsForOrder(userId, order);
 
   if (!hasSufficientFunds) {
@@ -110,9 +154,11 @@ const placeOrder = (type: OrderType) => async (userId: string, order: PlaceOrder
   try {
     await client.query("BEGIN");
 
+    let transactionType = transactionTypeForOrder();
+
     let orderId = await insertOrder(userId, order);
     let tradeId = await insertTrade(orderId, userId, order);
-    //await insertUserTransaction("sellOrderCreated", userId, { orderId, currency, value, priceCurrency, price });
+    await insertUserTransaction(userId, transactionType, { orderId, ...order });
 
     await client.query("COMMIT");
 
@@ -244,38 +290,47 @@ const getCompleteTradeFunction = (buyTrade: Trade, sellTrade: Trade): CompleteTr
   return completePartialTrade;
 }
 
-const tradeEngine = async (tradingPair: TradingPair, tradeTimestamp: Date) => {
+type TradeResult = {
+  tradingPair: TradingPair;
+  tradeTimestamp: Date;
+  tradeHistories: string[];
+}
+
+const tradeEngine = async (tradingPair: TradingPair, tradeTimestamp: Date): Promise<TradeResult> => {
+  let tradeHistories: string[] = [];
+  
   do {
-    await client.query("BEGIN"); // TRANSACTION ISOLATION LEVEL SERIALIZABLE");
+    //await client.query("BEGIN"); // TRANSACTION ISOLATION LEVEL SERIALIZABLE");
 
     let sellTrade: Trade = await getLowestSellTrade(tradingPair, tradeTimestamp);
 
     if (!sellTrade) {
-      await client.query("ROLLBACK");
-      return;
+      //await client.query("ROLLBACK");
+      break;
     }
 
     let buyTrade = await getNextBuyTrade(tradingPair, sellTrade.price, tradeTimestamp);
 
     if (!buyTrade) {
-      await client.query("ROLLBACK");
-      return;
+      //await client.query("ROLLBACK");
+      break;
     }
 
     const calculateCommissionValues = (value: number): CommissionValues => {
       let priceDecimal = new Decimal(price);
       let valueDecimal = new Decimal(value);
 
-      let buyTradeValue = new Decimal(buyTrade.value);
       let buyTradeFees = new Decimal(buyUser.tradingFees);
-      let sellTradeValue = new Decimal(sellTrade.value);
       let sellTradeFees = new Decimal(sellUser.tradingFees);
+      
+      let tradeValue = valueDecimal.mul(priceDecimal); //buyTradeValue.mul(priceDecimal);
 
-      let buyCommission = buyTradeValue.mul(buyTradeFees).div(100);
-      let sellCommission = sellTradeValue.mul(priceDecimal).mul(sellTradeFees).div(100);
+      let buyCommission = valueDecimal.mul(buyTradeFees).div(100);  
+      let sellCommission = tradeValue.mul(sellTradeFees).div(100);
+      
       let valueLessCommission = valueDecimal.sub(buyCommission);
       let priceLessCommission = priceDecimal.sub(priceDecimal.mul(sellTradeFees).div(100));
-      let tradeValue = valueDecimal.mul(priceDecimal); //buyTradeValue.mul(priceDecimal);
+      
       let tradeValueLessCommission = tradeValue.sub(sellCommission); //(buyTradeValue.mul(priceDecimal)).sub(sellCommission);
 
       return {
@@ -317,14 +372,38 @@ const tradeEngine = async (tradingPair: TradingPair, tradeTimestamp: Date) => {
       return result.rows[0].id as string;
     }
 
-    console.log("buyTrade", buyTrade);
-    console.log("sellTrade", sellTrade);
+    const calculateBuyersChange = (value: number) => {
+      let tradeValue = new Decimal(value);
+      let buyPrice = new Decimal(buyTrade.price);
+      let sellPrice = new Decimal(sellTrade.price);
+
+      let buyersChange = tradeValue.mul(buyPrice.sub(sellPrice));
+
+      return new Decimal(buyersChange.toFixed(8)).toNumber();
+    }
+
+    const applyBuyersChange = async (value: number) => {
+      if (sellTrade.timestamp.getTime() < buyTrade.timestamp.getTime()) {
+        let buyersChange = calculateBuyersChange(value);
+
+        if (buyersChange > 0) {
+          await insertUserTransaction(buyUser.id, "buyersChange", {
+            value: buyersChange,
+            currency: buyTrade.price_currency,
+            orderId: buyTrade.order_id
+          });
+        }
+      }
+    }
+
+    //console.log("buyTrade", buyTrade);
+    //console.log("sellTrade", sellTrade);
 
     let buyUser = await getUser(buyTrade.user_id);
     let sellUser = await getUser(sellTrade.user_id);
 
-    console.log("buyUser", buyUser);
-    console.log("sellUser", sellUser);
+    //console.log("buyUser", buyUser);
+    //console.log("sellUser", sellUser);
 
     // get the trade parameters
     let price = getTradePrice(buyTrade, sellTrade);
@@ -335,10 +414,28 @@ const tradeEngine = async (tradingPair: TradingPair, tradeTimestamp: Date) => {
     let commissionValues = calculateCommissionValues(value);
     let { tradeValueLessCommission, valueLessCommission } = commissionValues;
 
+    await client.query("BEGIN");
+
     // insert trade history
-    await insertTradeHistory(value, commissionValues);
+    let tradeHistoryId = await insertTradeHistory(value, commissionValues);
+    tradeHistories.push(tradeHistoryId);
 
+    // update SELLERS balance
+    await insertUserTransaction(sellUser.id, "sellOrderCompleted", {
+      value: tradeValueLessCommission,
+      currency: sellTrade.price_currency,
+      orderId: sellTrade.order_id
+    });
 
+    // update BUYERS balance
+    await insertUserTransaction(buyUser.id, "buyOrderCompleted", {
+      value: valueLessCommission,
+      currency: buyTrade.currency,
+      orderId: buyTrade.order_id
+    });
+    
+    // apply BUYERS change, where applicable
+    await applyBuyersChange(value);
 
     // complete the trade
     await completeTradeFn(buyTrade, sellTrade);
@@ -347,6 +444,19 @@ const tradeEngine = async (tradingPair: TradingPair, tradeTimestamp: Date) => {
 
     console.log("Done!");
   } while (true);
+
+  return { tradingPair, tradeTimestamp, tradeHistories };
+}
+
+const getTableRow = <T>(tableName: string) => async (id: string) => {
+  const sql = `SELECT * FROM ${ tableName } WHERE id = $1`;
+  let result = await client.query(sql, [id]);
+
+  if (result.rowCount === 0) {
+    return null;
+  }
+
+  return result.rows[0] as T;
 }
 
 const getTrade = async (id: string) => {
@@ -360,8 +470,13 @@ const getTrade = async (id: string) => {
   return result.rows[0] as Trade;
 }
 
+const getUserTransaction = getTableRow<UserTransaction>("user_transactions");
+
 const tradeSubject = new Subject<Trade>();
 const tradeStream$ = tradeSubject.asObservable();
+
+const userTransactionSubject = new Subject<UserTransaction>();
+const userTransactionStream$ = userTransactionSubject.asObservable();
 
 const displayTrade = (trade: Trade) => {
   return new Promise<void>(resolve => {
@@ -374,18 +489,96 @@ const displayTrade = (trade: Trade) => {
 
 tradeStream$
   .pipe(
-    concatMap(trade => from(displayTrade(trade)))
+    //tap(trade => console.log(trade)),
+    concatMap(trade => {
+      let { currency, price_currency, timestamp } = trade;
+
+      return from(tradeEngine({ currency, price_currency }, timestamp));
+    })
   )
-  .subscribe();
-    /*() => {
-    console.log("subscribed...");
+  .subscribe(tradeResult => {
+    console.log("trade result...", tradeResult);
+  });
 
-    //await displayTrade(trade);
+type CalculateNewBalanceFunction = (userBalance: number, value: number) => number;
 
-    /*let { currency, price_currency, timestamp } = trade;
+const updateUserBalance = (calculateNewBalanceFn: CalculateNewBalanceFunction) => async (userId: string, currency: Currencies, value: number) => {
+  let userBalance = await getUserBalance(userId, currency);
+  let newBalance = calculateNewBalanceFn(userBalance, value);
 
-    await tradeEngine({ currency, price_currency }, timestamp);*/
-  //});
+  const sql = `UPDATE users
+    SET balances = jsonb_set(balances, '{${ currency }}', '${ newBalance }'::jsonb)
+    WHERE id = $1`;
+
+  await client.query(sql, [userId]);
+}
+
+const increaseUserBalance = updateUserBalance((userBalance, value) => {
+  let newBalance = new Decimal(userBalance || 0).add(value).toFixed(8);
+
+  return new Decimal(newBalance).toNumber();
+});
+
+const decreaseUserBalance = updateUserBalance((userBalance, value) => {
+  let newBalance = new Decimal(userBalance || 0).sub(value).toFixed(8);
+
+  return new Decimal(newBalance).toNumber();
+});
+
+userTransactionStream$
+  .subscribe(async transaction => {
+    let { type, user_id, currency, value, price_currency, price } = transaction;
+
+    switch (type) {
+      case "deposit":
+        await increaseUserBalance(user_id, currency, value);
+        break;
+
+      case "buyOrderCreated":
+        let orderValue = new Decimal(value).mul(price).toFixed(8);
+        await decreaseUserBalance(user_id, price_currency, new Decimal(orderValue).toNumber());
+        break;
+
+      case "sellOrderCreated":
+        await decreaseUserBalance(user_id, currency, value);
+        break;
+
+      case "buyOrderCompleted":
+      case "sellOrderCompleted":
+        await increaseUserBalance(user_id, currency, value);
+        break;
+
+      case "buyersChange":
+        await increaseUserBalance(user_id, currency, value);
+        break;
+    }
+  });
+
+export const ordersRouter = Router();
+
+ordersRouter.post("/buy", async (req, res, next) => {
+  let { userId, ...order } = req.body as { userId: string } & Order;
+  
+  try {
+    let id = await placeBuyOrder(userId, order);
+
+    res.json({ id });
+  } catch (err) {
+    next(err);
+  }
+});
+
+ordersRouter.post("/sell", async (req, res, next) => {
+  let { userId, ...order } = req.body as { userId: string } & Order;
+
+  try {
+    let id = await placeSellOrder(userId, order);
+
+    res.json({ id });
+  } catch (err) {
+    next(err);
+  }
+});
 
 export const testPg = async () => {
   try {
@@ -395,25 +588,35 @@ export const testPg = async () => {
     await client.query("LISTEN watchers");
 
     client.on("notification", async (message) => {
-      console.log(message);
+      //console.log(message);
       let [table, column, id] = message.payload.split(",");
 
       if (table === "trades") {
         let trade = await getTrade(id);
+        console.log("trade notification...", trade.id, trade.timestamp.getTime());
 
         tradeSubject.next(trade);
+      }
+
+      if (table === "user_transactions") {
+        let tx = await getUserTransaction(id);
+
+        userTransactionSubject.next(tx);
       }
     });
 
     let userRU = await getUser("408efabd-96fe-41a9-9aea-3487f86675d1");
-    console.log(userRU);
+    let userCat = await getUser("6b1e0ec7-82f9-41c3-81f7-a1a6b7f99630");
+    //console.log(userRU);
 
-    let id1 = await placeSellOrder(userRU.id, { currency: "BTC", value: 0.005, priceCurrency: "ZAR", price: 100000 });
-    let id2 = await placeSellOrder(userRU.id, { currency: "BTC", value: 0.005, priceCurrency: "ZAR", price: 100000 });
+    let sellId1 = await placeSellOrder(userRU.id, { currency: "BTC", value: 0.005, priceCurrency: "ZAR", price: 100000 });
+    //console.log("sellId1", sellId1);
+
+    let sellId2 = await placeSellOrder(userRU.id, { currency: "BTC", value: 0.005, priceCurrency: "ZAR", price: 100000 });
+    //console.log("sellId2", sellId2);
     
-    let id3 = await placeBuyOrder(userRU.id, { currency: "BTC", value: 0.01, priceCurrency: "ZAR", price: 100100 });
-
-    console.log(id1, id2, id3);
+    let buyId1 = await placeBuyOrder(userCat.id, { currency: "BTC", value: 0.01, priceCurrency: "ZAR", price: 100100 });
+    //console.log("buyId1", buyId1);
 
     //await placeBuyOrder(userRU.id, { currency: "ADA", value: 10.0, priceCurrency: "ZAR", price: 2.0 });
     //await placeSellOrder(userRU.id, { currency: "ADA", value: 20.0, priceCurrency: "ZAR", price: 2.05 });

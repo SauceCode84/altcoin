@@ -55,7 +55,7 @@ export const setupTransactionFeed = async () => {
         break;
 
       case "sellOrderCreated":
-      await decreaseUserBalance(userId, currency, value);
+        await decreaseUserBalance(userId, currency, value);
         break;
 
       case "buyOrderCompleted":
